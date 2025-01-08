@@ -2,6 +2,5 @@
 This repository contains code for data analysis used in our study of sex-specific gene expression in adipose tissue of brown bears during hibernation.
 
 ## Data Availability
-- Brown bear mRNA-seq data
-- Raw data available at NCBI BioProject: PRJNA640679
+- Raw data available at NCBI BioProject: PRJNA413091
 
