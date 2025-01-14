@@ -22,14 +22,24 @@ Gene-level read counts were then quantified using featureCounts from Subread v1.
 ## 2. Differential Gene Expression Analysis
 The following R script contains code to
 - Normalize gene expression counts for adipose
-- Perform differential expression analysis between active season females and hibernation females, and active season males and hibernating males
-- Perform differential expression analysis between active  males and active females, and hibernating  males and hibernating females
+- Perform differential expression analysis between active season females and hibernation females, and active season males and hibernating males and perform differential expression analysis between active  males and active females, and hibernating  males and hibernating females
+- Plot PCA 
+- Subset significantly differentially expressed genes
+- Plot Venn diagram of DEGs
+- Subset unique upregulated and downregulated genes for male and females
+- Subset shared upregulated and downregulated genes, plot the male vs female log2fc values of shared genes
+- Make heatmaps of DEGs
+- Plot the transcripts per million of two interesting genes (GPER1 and OXTR)
 
 Link to Rscript: 
 
 ## 3. GO and KEGG Pathway Analysis of Differentially Expressed Genes
 The following R script contains code used to
 - Use Gene Set Enrichment Analysis (GSEA)to characterize enriched GO and KEGG terms for all male and female hibernation vs active season genes, and all active and hibernation male vs female genes
+  * Plot GSEA results as dotplot
+  * Save GSEA results as csv files
 - Use Overrepresentation Analysis (ORA) to characterize enriched GO and KEGG terms for differentially expressed male-specific and female-specific up and downregulated genes
+  * Plot ORA results as bargraphs
+  * Save ORA results as csv files
 
 Link to Rscript:
