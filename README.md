@@ -31,7 +31,7 @@ The following R script contains code to
 - Make heatmaps of DEGs
 - Plot the transcripts per million of two interesting genes (GPER1 and OXTR)
 
-Link to R Markdown: [adiposeGenes_DESeq2.11.24.24.Rmd](analysis/adiposeGenes_DESeq2.11.24.24.Rmd)
+Link to R Markdown: [adiposeGenes_DESeq2.11.24.24.Rmd](analysis/)
 
 ## 3. GO and KEGG Pathway Analysis of Differentially Expressed Genes
 The following R script contains code used to
@@ -42,4 +42,4 @@ The following R script contains code used to
   * Plot ORA results as bargraphs
   * Save ORA results as csv files
 
-Link to R Markdown: [go_and_KEGG_analysis.11.30.2024.Rmd](analysis/go_and_KEGG_analysis.11.30.2024.Rmd)
+Link to R Markdown: [go_and_KEGG_analysis.11.30.2024.Rmd](analysis/)
