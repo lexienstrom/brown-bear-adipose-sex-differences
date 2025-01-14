@@ -39,7 +39,7 @@ dds_new <- DESeqDataSetFromMatrix(countData = cts_new,
                               design = ~ condition)
 # Pre-filtering
 smallestGroupSize <- 2 # smallest group size
-keep <- rowSums(counts(dds_new) >= 10) >= smallestGroupSize
+keep <- rowSums(counts(dds_new) >= 10) >= smallestGroupSize # Keep genes that have 10 or greater reads in 2 or more samples
 dds_new <- dds_new[keep, ]
 
 # Differential Expression Analysis
