@@ -1,0 +1,665 @@
+---
+title: "go_and_kegg_pathway_analysis.11.30.2024"
+output: html_document
+date: "2024-11-30"
+---
+
+setup
+```{r}
+library(clusterProfiler)
+library(enrichplot)
+library(ggplot2)
+library(tidyverse)
+library(dplyr)
+library(org.Hs.eg.db)
+library(AnnotationHub)
+
+# Load brown bear database for GO analysis
+hub <- AnnotationHub()
+query(hub, "Ursus arctos")
+bear_annot <- hub[["AH118004"]]
+
+# Search brown bear database for KEGG
+brown_bear <- search_kegg_organism('Ursus arctos', by='scientific_name')
+
+# Read in deseq results
+res_female_actVsHib_new_df <- as.data.frame(read_tsv("deseq2_female.actVsHib_bearAdipose_genes.tsv", show_col_types = FALSE))
+res_male_actVsHib_new_df <- as.data.frame(read_tsv("deseq2_male.actVsHib_bearAdipose_genes.tsv", show_col_types = FALSE))
+res_hib_maleVsFemale_new_df <- as.data.frame(read_tsv("deseq2_hib.maleVsFemale_bearAdipose_genes.tsv", show_col_types = FALSE))
+res_act_maleVsFemale_new_df <- as.data.frame(read_tsv("deseq2_act_maleVsFemale_genes.tsv", show_col_types = FALSE))
+
+# Read in signigiant DEGs
+resOrdered_female_sig_new <- as.data.frame(read_tsv("deseq_filtered.sig.female_genes.tsv", show_col_types = FALSE))
+resOrdered_male_sig_new<- as.data.frame(read_tsv("deseq_filtered.sig.male_genes.tsv", show_col_types = FALSE))
+
+resOrdered_hib_maleVsFemale <- as.data.frame(read_tsv("deseq_resOrdered_hib_maleVsFemale.tsv", show_col_types = FALSE))
+resOrdered_act_maleVsFemale <- as.data.frame(read_tsv("deseq_resOrdered_act_maleVsFemale.tsv", show_col_types = FALSE))
+
+# Read in unqiue and shared DEG subsets
+resOrdered_unique.female_upreg <- as.data.frame(read_tsv("female_upreg_unique.tsv", show_col_types = FALSE))
+resOrdered_unique.female_downreg <- as.data.frame(read_tsv("female_downreg_unique.tsv", show_col_types = FALSE))
+
+resOrdered_unique.male_upreg <- as.data.frame(read_tsv("male_upreg_unique.tsv", show_col_types = FALSE))
+resOrdered_unique.male_downreg <- as.data.frame(read_tsv("male_downreg_unique.tsv", show_col_types = FALSE))
+
+resOrdered_shared_upreg <- as.data.frame(read_tsv("shared_upregulated.tsv", show_col_types = FALSE))
+resOrdered_shared_downreg <- as.data.frame(read_tsv("shared_downregulated.tsv", show_col_types = FALSE))
+```
+
+
+# 1. Gene Set Enrichment Analysis
+
+## A. GO Analysis
+
+### Running gseGO function
+```{r}
+# Make function to run GSEA
+run_gsea <- function(df, OrgD, ont, sex){
+  gse_genelist = df$log2FoldChange
+  names(gse_genelist) <- df$ENTREZID
+
+  gse_genelist <- sort(gse_genelist, decreasing = TRUE)
+
+
+  # Run GSEA for GO Biological Processes (BP)
+  gsego_results <- gseGO(geneList = gse_genelist,
+                         OrgDb = OrgD,
+                         ont = ont,      # Options: "BP", "MF", "CC"
+                         minGSSize = 3,
+                         maxGSSize = 500,
+                         keyType = "ENTREZID",
+                         pAdjustMethod = "BH",
+                         pvalueCutoff = 0.05,
+                         verbose = FALSE)
+  
+  return(gsego_results)                                                       
+}
+
+# Female: act vs hib (BP: biological processe, MF: molecular functions, CC: cellular components)
+female_gsea <- run_gsea(res_female_actVsHib_new_df, bear_annot, "BP", "female")
+female_gsea_MF <- run_gsea(res_female_actVsHib_new_df, bear_annot, "MF", "female")
+female_gsea_CC <- run_gsea(res_female_actVsHib_new_df, bear_annot, "CC", "female")
+
+# Male: act vs hib
+male_gsea <- run_gsea(res_male_actVsHib_new_df, bear_annot, "BP", "male")
+male_gsea_MF <- run_gsea(res_male_actVsHib_new_df, bear_annot, "MF", "male")
+male_gsea_CC <- run_gsea(res_male_actVsHib_new_df, bear_annot, "CC", "male")
+
+# Hib and act: male vs female on biological processes
+hib_gsea <- run_gsea(res_hib_maleVsFemale_new_df, bear_annot, "BP", "female" )
+act_gsea <- run_gsea(res_act_maleVsFemale_new_df, bear_annot, "BP", "female" )
+
+# Filter similar terms, with similarity semantic cutoff of 0.7
+female_gsea_filtered <- clusterProfiler::simplify(female_gsea, cutoff = 0.7, by = "p.adjust", select_fun = min)
+female_gsea_filtered_MF <- clusterProfiler::simplify(female_gsea_MF, cutoff = 0.7, by = "p.adjust", select_fun = min)
+female_gsea_filtered_CC <- clusterProfiler::simplify(female_gsea_CC, cutoff = 0.7, by = "p.adjust", select_fun = min)
+
+male_gsea_filtered <- clusterProfiler::simplify(male_gsea, cutoff = 0.7, by = "p.adjust", select_fun = min)
+male_gsea_filtered_MF <- clusterProfiler::simplify(male_gsea_MF, cutoff = 0.7, by = "p.adjust", select_fun = min)
+male_gsea_filtered_CC <- clusterProfiler::simplify(male_gsea_CC, cutoff = 0.7, by = "p.adjust", select_fun = min)
+
+hib_gsea_filtered <- clusterProfiler::simplify(hib_gsea, cutoff = 0.7, by = "p.adjust", select_fun = min)
+act_gsea_filtered <- clusterProfiler::simplify(act_gsea, cutoff = 0.7, by = "p.adjust", select_fun = min)
+```
+
+### Plot GO GSEA result
+```{r}
+# Convert GSEA results to data frames
+female_gsea_df <- as.data.frame(female_gsea_filtered@result)
+male_gsea_df <- as.data.frame(male_gsea_filtered@result)
+
+# Add a "Sex" column to distinguish between male and female results
+female_gsea_df$Sex <- "Female"
+male_gsea_df$Sex <- "Male"
+
+# Filter for the top 20 significant GO terms by adjusted p-value
+top_female <- female_gsea_df[order(female_gsea_df$p.adjust), ][1:20, ]
+top_male <- male_gsea_df[order(male_gsea_df$p.adjust), ][1:20, ]
+
+# Combine the filtered dataframes
+combined_gsea_df <- rbind(top_female, top_male)
+
+# Calculate Count from core_enrichment
+combined_gsea_df$Count <- sapply(strsplit(combined_gsea_df$core_enrichment, "/"), length)
+
+# Plot the combined GSEA results with ggplot2
+library(ggplot2)
+ggplot(combined_gsea_df, aes(x = NES, y = reorder(Description, NES), color = Sex, size = Count)) +
+  geom_point() +
+  labs(title = "GSEA GO Terms of All Male and Female Genes",
+       x = "Normalized Enrichment Score (NES)",
+       y = "GO Term") +
+  theme_bw(base_size = 12) +
+  theme(axis.text.y = element_text(size = 10),
+        axis.text.x = element_text(size = 10),
+        legend.position = "right") +
+  scale_color_manual(values = c("Female" = "maroon", "Male" = "darkturquoise"))
+
+# Save the plotNo
+ggsave("gsea_male_and_female_actVsHib_combined_top20_dotplot.pdf", width = 12, height = 10, dpi = 600)
+
+
+# Hib and active: male vs female
+dotplot(hib_gsea_filtered, showCategory = 20, x = "NES", size = "Count") +
+  labs(title = "GO GSEA of All Hibernation Genes: Males vs Females") +
+  theme_bw(base_size = 12)
+ggsave("gsea_hib_maleVsFemale_dotplot.png", width = 10, height = 8, dpi = 600)
+
+dotplot(act_gsea_filtered, showCategory = 20, x = "NES", size = "Count") +
+  labs(title = "GO GSEA of All Active Genes: Males vs Females") +
+  theme_bw(base_size = 12)
+ggsave("gsea_act_maleVsFemale_dotplot.png", width = 10, height = 8, dpi = 600)
+
+```
+
+### Make GO GSEA Results Table
+```{r}
+# Function to convert GSEA results to a tidy data frame
+gsea_to_df <- function(gsea_result, sex, ontology) {
+  as.data.frame(gsea_result@result) %>%
+    mutate(Sex_or_Season = sex,
+           ONTOLOGY = ontology) %>%
+    dplyr::select(Sex_or_Season, ONTOLOGY, Description, NES, p.adjust, setSize)
+}
+
+# Female GSEA tables
+female_bp <- gsea_to_df(female_gsea_filtered, "Female", "BP")
+female_mf <- gsea_to_df(female_gsea_filtered_MF, "Female", "MF")
+female_cc <- gsea_to_df(female_gsea_filtered_CC, "Female", "CC")
+
+# Combine all female results
+female_gsea_table <- bind_rows(female_bp, female_mf, female_cc)
+
+# Male GSEA tables
+male_bp <- gsea_to_df(male_gsea_filtered, "Male", "BP")
+male_mf <- gsea_to_df(male_gsea_filtered_MF, "Male", "MF")
+male_cc <- gsea_to_df(male_gsea_filtered_CC, "Male", "CC")
+
+# Combine all male results
+male_gsea_table <- bind_rows(male_bp, male_mf, male_cc)
+
+# Hib and act GSEA tables
+hib_bp <- gsea_to_df(hib_gsea_filtered, "Hibernation", "BP")
+act_bp <- gsea_to_df(act_gsea_filtered, "Active", "BP")
+
+# Combine all hib and act results
+hib_act_gsea_table <- bind_rows(hib_bp, act_bp)
+
+# Save the tables to CSV
+write.csv(female_gsea_table, "female_gsea_table.csv", row.names = T)
+write.csv(male_gsea_table, "male_gsea_table.csv", row.names = T)
+write.csv(hib_act_gsea_table, "hib_and_act_gsea_table.csv", row.names = T)
+
+```
+
+
+## B. KEGG Analysis
+
+### Run gseKEGG function
+```{r}
+# KEGG Enrichment Analysis
+
+ run_gseKEGG <- function(res, organism, sex){
+   foldchange <- res$log2FoldChange
+   names(foldchange) <- res$ENTREZID
+   
+   foldchange <- sort(foldchange, decreasing = TRUE) 
+
+   kk2 <- gseKEGG(gene = foldchange,
+                  organism = organism,
+                  minGSSize = 3,
+                  maxGSSize = 500,
+                  pvalueCutoff = 0.05,
+                  verbose = FALSE
+   )
+   return(kk2)
+ }
+
+fem_kk2 <- run_gseKEGG(res_female_actVsHib_new_df, "uah", "Female")
+male_kk2 <- run_gseKEGG(res_male_actVsHib_new_df, "uah", "Male")
+
+hib_kk2 <- run_gseKEGG(res_hib_maleVsFemale_new_df, "uah", "f")
+act_kk2 <- run_gseKEGG(res_act_maleVsFemale_new_df, "uah", "f")
+```
+
+### Plot KEGG GSEA results
+```{r}
+# Combined males and females actVsHib results
+# Add a "Sex" column to distinguish between male and female results
+fem_kk2_df$Sex <- "Female"
+male_kk2_df$Sex <- "Male"
+
+# Filter for the top 20 significant GO terms by adjusted p-value
+top_female_kk <- fem_kk2_df[order(fem_kk2_df$p.adjust), ][1:20, ]
+top_male_kk <- male_kk2_df[order(male_kk2_df$p.adjust), ][1:20, ]
+
+# Combine the filtered dataframes
+combined_kkgsea_df <- rbind(top_female_kk, top_male_kk)
+
+# Calculate Count from core_enrichment
+combined_kkgsea_df$Count <- sapply(strsplit(combined_kkgsea_df$core_enrichment, "/"), length)
+combined_kkgsea_df$Description <- gsub(" - Ursus arctos \\(brown bear\\)", "", combined_kkgsea_df$Description)
+
+
+# Plot the combined GSEA results with ggplot2
+library(ggplot2)
+ggplot(combined_kkgsea_df, aes(x = NES, y = reorder(Description, NES), color = Sex, size = Count)) +
+  geom_point() +
+  labs(title = "KEGG GSEA of All Male and Female Genes",
+       x = "Normalized Enrichment Score (NES)",
+       y = "KEGG Pathway") +
+  theme_bw(base_size = 12) +
+  theme(axis.text.y = element_text(size = 10),
+        axis.text.x = element_text(size = 10),
+        legend.position = "right") +
+  scale_color_manual(values = c("Female" = "maroon", "Male" = "darkturquoise"))
+
+# Save the plot
+ggsave("kegg_gsea_male_and_female_actVs_hib_combined_top20_dotplot.pdf", width = 12, height = 14, dpi = 600)
+
+
+# hib and active male vs female
+dotplot(hib_kk2, showCategory = 20, title = "KEGG GSEA of All Hibernation Genes: Males vs Females", label_format = function(x) gsub(" - Ursus arctos \\(brown bear\\)", "", x), x = "NES", size = "Count") 
+ggsave("kegg_gsea_hib_maleVsFemale.png", width = 10, height = 8, dpi = 600)
+
+dotplot(act_kk2, showCategory = 20, title = "KEGG GSEA of All Active Genes: Males vs Females", label_format = function(x) gsub(" - Ursus arctos \\(brown bear\\)", "", x), x = "NES", size = "Count") 
+ggsave("kegg_gsea_act_maleVsFemale.png", width = 10, height = 8, dpi = 600)
+```
+
+### MAKE KEGG Results Tables
+```{r}
+fem_kk2_df <- as.data.frame(fem_kk2@result)
+male_kk2_df <- as.data.frame(male_kk2@result)
+hib_kk2_df <- as.data.frame(hib_kk2@result)
+act_kk2_df <- as.data.frame(act_kk2@result)
+
+write.csv(fem_kk2_df, "kegg_female_actVsHib_gsea.csv")
+write.csv(male_kk2_df, "kegg_male_actVsHib_gsea.csv")
+write.csv(hib_kk2_df, "kegg_hib_maleVsFemale_gsea.csv")
+write.csv(act_kk2_df, "kegg_act_maleVsFemale_gsea.csv")
+
+```
+
+### Save genes assocaited with PI3K-Akt and visualize Pathview of PI3K-Akt KEGG Pathway
+```{r}
+# Extract enrichment genes for the PI3K pathway from the female dataset
+f_genes_in_pi3k <- fem_kk2@result$core_enrichment[fem_kk2@result$ID == "uah04151"]
+f_genes_in_pi3k <- unlist(strsplit(f_genes_in_pi3k, "/"))
+
+# Convert ENTREZ IDs to gene symbols using the bear annotation database
+fem_pi3k_gene_ids <- bitr(f_genes_in_pi3k, fromType = "ENTREZID", 
+                        toType = "SYMBOL", OrgDb = bear_annot)
+
+# Extract log2 fold change and adjusted p-values for the PI3K pathway genes from the female dataset
+f_pi3k_log2fc <- res_female_actVsHib_new_df$log2FoldChange[res_female_actVsHib_new_df$gene %in% fem_pi3k_gene_ids$SYMBOL]
+f_pi3k_padj <- res_female_actVsHib_new_df$padj[res_female_actVsHib_new_df$gene %in% fem_pi3k_gene_ids$SYMBOL]
+
+# Add log2 fold change and p-values to the gene ID dataframe and label as female
+fem_pi3k_gene_ids <- fem_pi3k_gene_ids %>% mutate(log2FoldChange = f_pi3k_log2fc,
+                                                  p.adjust = f_pi3k_padj,
+                                                  Sex = "female")
+
+# Save female PI3K gene data to a TSV file
+write_tsv(fem_pi3k_gene_ids, "female_pi3k_genes.tsv")
+
+# Extract enrichment genes for the PI3K pathway from the male dataset
+m_genes_in_pi3k <- male_kk2@result$core_enrichment[male_kk2@result$ID == "uah04151"]
+m_genes_in_pi3k <- unlist(strsplit(m_genes_in_pi3k, "/"))
+# Convert ENTREZ IDs to gene symbols using the bear annotation database
+male_pi3k_gene_ids <- bitr(m_genes_in_pi3k, fromType = "ENTREZID", 
+                        toType = "SYMBOL", OrgDb = bear_annot)
+
+# Extract log2 fold change and adjusted p-values for the PI3K pathway genes from the male dataset
+m_pi3k_log2fc <- res_male_actVsHib_new_df$log2FoldChange[res_male_actVsHib_new_df$gene %in% male_pi3k_gene_ids$SYMBOL]
+m_pi3k_padj <- res_male_actVsHib_new_df$padj[res_male_actVsHib_new_df$gene %in% male_pi3k_gene_ids$SYMBOL]
+
+# Add log2 fold change and p-values to the gene ID dataframe and label as male
+male_pi3k_gene_ids <- male_pi3k_gene_ids %>% mutate(log2FoldChange = m_pi3k_log2fc,
+                                                  p.adjust = m_pi3k_padj,
+                                                  Sex = "male")
+
+# Save  male PI3K gene data to a TSV file
+write_tsv(male_pi3k_gene_ids, "male_pi3k_genes.tsv")
+
+# Load the Pathview library for pathway visualization
+library("pathview")
+
+# Prepare fold change data for females for pathway visualization
+fem_foldchange <- res_female_actVsHib_new_df$log2FoldChange
+names(fem_foldchange) <- res_male_actVsHib_new_df$ENTREZID
+fem_foldchange <- sort(fem_foldchange, decreasing = TRUE) 
+
+# Generate a pathway visualization for the PI3K pathway in the female dataset
+uah04151_fem <- pathview(gene.data  = fem_foldchange,
+                         pathway.id = "uah04151",
+                         species = "uah",
+                         limit = list(gene=max(abs(fem_foldchange)), cpd=1),
+                         out.suffix = "f3_fem_pi3k_pathview",
+                         kegg.native = T,
+                         same.layer = T)
+
+# Prepare fold change data for males for pathway visualization
+male_foldchange <- res_male_actVsHib_new_df$log2FoldChange
+names(male_foldchange) <- res_male_actVsHib_new_df$ENTREZID
+male_foldchange <- sort(male_foldchange, decreasing = TRUE) 
+
+# Generate a pathway visualization for the PI3K pathway in the male dataset
+uah04151_male <- pathview(gene.data  = male_foldchange,
+                          pathway.id = "uah04151",
+                          species = "uah",
+                          limit = list(gene=max(abs(male_foldchange)), cpd=1),
+                          out.suffix = "f3_male_pi3k_pathview",
+                          kegg.native = T,
+                          same.layer = T)
+
+
+```
+
+# 2. Overrepresentation Analysis
+
+
+## A. GO analysis
+
+### Run enrichGO function
+```{r}
+run_enrichGO <- function(df,organism, universe, ont){
+  gene_ids <- as.character(df$ENTREZID)
+
+  background_ids <- as.character(universe$ENTREZID)
+  
+  ego <- enrichGO(gene = gene_ids,
+                  OrgDb = organism,
+                  ont = ont,
+                  keyType = "ENTREZID",
+                  universe = background_ids,
+                  pAdjustMethod = "BH",
+                  pvalueCutoff = 0.05,
+                  readable = TRUE)
+}
+
+# Female
+ora_female_upreg_BP <- run_enrichGO(resOrdered_unique.female_upreg, bear_annot, res_female_actVsHib_new_df, "BP")
+ora_female_downreg_BP <- run_enrichGO(resOrdered_unique.female_downreg, bear_annot, res_female_actVsHib_new_df, "BP")
+ora_female_upreg_MF <- run_enrichGO(resOrdered_unique.female_upreg, bear_annot, res_female_actVsHib_new_df, "MF")
+ora_female_downreg_MF <- run_enrichGO(resOrdered_unique.female_downreg, bear_annot, res_female_actVsHib_new_df, "MF")
+ora_female_upreg_CC <- run_enrichGO(resOrdered_unique.female_upreg, bear_annot, res_female_actVsHib_new_df, "CC")
+ora_female_downreg_CC <- run_enrichGO(resOrdered_unique.female_downreg, bear_annot, res_female_actVsHib_new_df, "CC")
+
+#Male
+ora_male_upreg_BP <- run_enrichGO(resOrdered_unique.male_upreg, bear_annot, res_male_actVsHib_new_df, "BP")
+ora_male_downreg_BP <- run_enrichGO(resOrdered_unique.male_downreg, bear_annot, res_male_actVsHib_new_df, "BP")
+ora_male_upreg_MF <- run_enrichGO(resOrdered_unique.male_upreg, bear_annot, res_male_actVsHib_new_df, "MF")
+ora_male_downreg_MF <- run_enrichGO(resOrdered_unique.male_downreg, bear_annot, res_male_actVsHib_new_df, "MF")
+ora_male_upreg_CC <- run_enrichGO(resOrdered_unique.male_upreg, bear_annot, res_male_actVsHib_new_df, "CC")
+ora_male_downreg_CC <- run_enrichGO(resOrdered_unique.male_downreg, bear_annot, res_male_actVsHib_new_df, "CC")
+
+#Shared
+ora_shared_upreg_BP <- run_enrichGO(resOrdered_shared_upreg, bear_annot, res_male_actVsHib_new_df, "BP")
+ora_shared_downreg_BP <- run_enrichGO(resOrdered_shared_downreg, bear_annot, res_male_actVsHib_new_df, "BP")
+ora_shared_upreg_MF <- run_enrichGO(resOrdered_shared_upreg, bear_annot, res_male_actVsHib_new_df, "MF")
+ora_shared_downreg_MF <- run_enrichGO(resOrdered_shared_downreg, bear_annot, res_male_actVsHib_new_df, "MF")
+ora_shared_upreg_CC <- run_enrichGO(resOrdered_shared_upreg, bear_annot, res_male_actVsHib_new_df, "CC")
+ora_shared_downreg_CC <- run_enrichGO(resOrdered_shared_downreg, bear_annot, res_male_actVsHib_new_df, "CC")
+
+
+# Make as dataframes
+ora_female_downreg_BP.df <- as.data.frame(ora_female_downreg_BP)
+ora_male_downreg_BP.df <- as.data.frame(ora_male_downreg_BP)
+
+# Filtering
+ora_female_upreg_BP_filtered <- clusterProfiler::simplify(ora_female_upreg_BP, cutoff = 0.7, by = "p.adjust", select_fun = min)
+ora_female_downreg_BP_filtered <- clusterProfiler::simplify(ora_female_downreg_BP, cutoff = 0.7, by = "p.adjust", select_fun = min)
+ora_female_upreg_MF_filtered <- clusterProfiler::simplify(ora_female_upreg_MF, cutoff = 0.7, by = "p.adjust", select_fun = min)
+ora_female_downreg_MF_filtered <- clusterProfiler::simplify(ora_female_downreg_MF, cutoff = 0.7, by = "p.adjust", select_fun = min)
+ora_female_upreg_CC_filtered <- clusterProfiler::simplify(ora_female_upreg_CC, cutoff = 0.7, by = "p.adjust", select_fun = min)
+ora_female_downreg_CC_filtered <- clusterProfiler::simplify(ora_female_downreg_CC, cutoff = 0.7, by = "p.adjust", select_fun = min)
+
+
+ora_male_upreg_BP_filtered <- clusterProfiler::simplify(ora_male_upreg_BP, cutoff = 0.7, by = "p.adjust", select_fun = min)
+ora_male_downreg_BP_filtered <- clusterProfiler::simplify(ora_male_downreg_BP, cutoff = 0.7, by = "p.adjust", select_fun = min)
+ora_male_upreg_MF_filtered <- clusterProfiler::simplify(ora_male_upreg_MF, cutoff = 0.7, by = "p.adjust", select_fun = min)
+ora_male_downreg_MF_filtered <- clusterProfiler::simplify(ora_male_downreg_MF, cutoff = 0.7, by = "p.adjust", select_fun = min)
+ora_male_upreg_CC_filtered <- clusterProfiler::simplify(ora_male_upreg_CC, cutoff = 0.7, by = "p.adjust", select_fun = min)
+ora_male_downreg_CC_filtered <- clusterProfiler::simplify(ora_male_downreg_CC, cutoff = 0.7, by = "p.adjust", select_fun = min)
+
+ora_shared_upreg_BP_filtered <- clusterProfiler::simplify(ora_shared_upreg_BP, cutoff = 0.7, by = "p.adjust", select_fun = min)
+ora_shared_downreg_BP_filtered <- clusterProfiler::simplify(ora_shared_downreg_BP, cutoff = 0.7, by = "p.adjust", select_fun = min)
+ora_shared_upreg_MF_filtered <- clusterProfiler::simplify(ora_shared_upreg_MF, cutoff = 0.7, by = "p.adjust", select_fun = min)
+ora_shared_downreg_MF_filtered <- clusterProfiler::simplify(ora_shared_downreg_MF, cutoff = 0.7, by = "p.adjust", select_fun = min)
+ora_shared_upreg_CC_filtered <- clusterProfiler::simplify(ora_shared_upreg_CC, cutoff = 0.7, by = "p.adjust", select_fun = min)
+ora_shared_downreg_CC_filtered <- clusterProfiler::simplify(ora_shared_downreg_CC, cutoff = 0.7, by = "p.adjust", select_fun = min)
+
+
+# Hibernation and Active season
+hib_unique <- subset(resOrdered_hib_maleVsFemale, !(resOrdered_hib_maleVsFemale$full_gene_id %in% resOrdered_act_maleVsFemale$full_gene_id)) # find genes in hibernation not in active season
+hib_up <- hib_unique %>% filter(log2FoldChange > 0) # filter for upregulated genes
+hib_down <- hib_unique %>% filter(log2FoldChange > 0) # filter for downregulated genes
+
+act_unique <- subset(resOrdered_act_maleVsFemale, !(resOrdered_act_maleVsFemale$full_gene_id %in% resOrdered_hib_maleVsFemale$full_gene_id)) # find genes in active not in hibernation season
+act_up <- act_unique %>% filter(log2FoldChange > 0) # filter for upregulated genes
+act_down <- act_unique %>% filter(log2FoldChange < 0) # filter for downregulated genes
+
+ora_hib_up_BP <- run_enrichGO(hib_up, bear_annot, res_hib_maleVsFemale_new_df, "BP")
+ora_hib_down_BP <- run_enrichGO(hib_down, bear_annot, res_hib_maleVsFemale_new_df, "BP")
+ora_act_up_BP <- run_enrichGO(act_up, bear_annot, res_act_maleVsFemale_new_df, "BP")
+ora_act_down_BP <- run_enrichGO(act_down, bear_annot, res_act_maleVsFemale_new_df, "BP")
+```
+
+### Plot GO ORA results
+```{r}
+# Male and Female ActVsHib
+# Plot all downregulated ora GO Terms
+ora_female_downreg_BP_filtered <- ora_female_downreg_BP_filtered %>% arrange(desc(Count)) # reorder by descending count number
+barplot(ora_female_downreg_BP_filtered, title = "GO ORA of Female-Specific Downregulated Genes") +
+  labs(x = "# of genes associated with GO term") +
+  theme_bw(base_size = 14)
+ggsave("ora_female_downreg_barplot.pdf", width =8, height = 15, dpi = 600)
+
+ora_male_downreg_BP_filtered <- ora_male_downreg_BP_filtered %>% arrange(desc(Count)) # reorder by descending count number
+barplot(ora_male_downreg_BP_filtered, showCategory = 20, title = "GO ORA of Male-Specific Downregulated Genes") +
+  labs(x = "# of genes associated with GO term") +
+  theme_bw(base_size = 14)
+ggsave("ora_male_downreg_barplot.pdf", width = 8, height = 15, dpi = 600)
+
+ora_shared_downreg_BP_filtered <- ora_shared_downreg_BP_filtered %>% arrange(desc(Count)) # reorder by descending count number
+barplot(ora_shared_downreg_BP_filtered, showCategory = 20, title = "GO ORA of Shared Downregulated Genes") +
+  labs(x = "# of genes associated with GO term") +
+  theme_bw(base_size = 14)
+ggsave("ora_shared_downreg_barplot.pdf", width = 8, height = 15, dpi = 600)
+
+# Hib and act maleVsFemale
+ora_hib_up_BP <- ora_hib_up_BP %>% arrange(desc(Count)) # reorder by descending count number
+barplot(ora_hib_up_BP, title = "GO ORA of hib upreg") +
+  labs(x = "# of genes associated with GO term") +
+  theme_bw(base_size = 14)
+ggsave("ora_hib_upreg_barplot.pdf", width =8, height = 15, dpi = 600)
+
+
+ora_act_down_BP <- clusterProfiler::simplify(ora_act_down_BP, cutoff = 0.7, by = "p.adjust", select_fun = min)
+ora_act_down_BP <- ora_act_down_BP %>% arrange(desc(Count))
+barplot(ora_act_down_BP, title = "GO ORA of act downreg") +
+  labs(x = "# of genes associated with GO term") +
+  theme_bw(base_size = 14)
+ggsave("ora_act_downreg_barplot.pdf", width =8, height = 15, dpi = 600)
+```
+
+### Make GO ORA table
+```{r}
+# Load required libraries
+library(tibble)
+
+# Function to convert enrichGO results to a tidy table
+enrich_to_df <- function(enrich_result, sex, direction, ontology) {
+  as.data.frame(enrich_result@result) %>%
+    mutate(Sex = sex,
+           Direction = direction,
+           ONTOLOGY = ontology) %>%
+    dplyr::select(Sex, Direction, ONTOLOGY, Description, p.adjust, GeneRatio, Count)
+}
+
+# Female tables
+female_up_BP <- enrich_to_df(ora_female_upreg_BP_filtered, "Female", "Upregulated", "BP")
+female_down_BP <- enrich_to_df(ora_female_downreg_BP_filtered, "Female", "Downregulated", "BP")
+female_up_MF <- enrich_to_df(ora_female_upreg_MF_filtered, "Female", "Upregulated", "MF")
+female_down_MF <- enrich_to_df(ora_female_downreg_MF_filtered, "Female", "Downregulated", "MF")
+female_up_CC <- enrich_to_df(ora_female_upreg_CC_filtered, "Female", "Upregulated", "CC")
+female_down_CC <- enrich_to_df(ora_female_downreg_CC_filtered, "Female", "Downregulated", "CC")
+
+# Combine all female results
+female_go_table <- bind_rows(female_up_BP, female_down_BP, female_up_MF, female_down_MF, female_up_CC, female_down_CC)
+write.csv(female_go_table, "female_GO_ora.csv", row.names = T)
+
+# Male tables
+male_up_BP <- enrich_to_df(ora_male_upreg_BP_filtered, "Male", "Upregulated", "BP")
+male_down_BP <- enrich_to_df(ora_male_downreg_BP_filtered, "Male", "Downregulated", "BP")
+male_up_MF <- enrich_to_df(ora_male_upreg_MF_filtered, "Male", "Upregulated", "MF")
+male_down_MF <- enrich_to_df(ora_male_downreg_MF_filtered, "Male", "Downregulated", "MF")
+male_up_CC <- enrich_to_df(ora_male_upreg_CC_filtered, "Male", "Upregulated", "CC")
+male_down_CC <- enrich_to_df(ora_male_downreg_CC_filtered, "Male", "Downregulated", "CC")
+
+# Combine all male results
+male_go_table <- bind_rows(male_up_BP, male_down_BP, male_up_MF, male_down_MF, male_up_CC, male_down_CC)
+write.csv(male_go_table, "male_GO_ora.csv", row.names = T)
+
+# Shared tables
+shared_up_BP <- enrich_to_df(ora_shared_upreg_BP_filtered, "Both", "Upregulated", "BP")
+shared_down_BP <- enrich_to_df(ora_shared_downreg_BP_filtered, "Both", "Downregulated", "BP")
+shared_up_MF <- enrich_to_df(ora_shared_upreg_MF_filtered, "Both", "Upregulated", "MF")
+shared_down_MF <- enrich_to_df(ora_shared_downreg_MF_filtered, "Both", "Downregulated", "MF")
+shared_up_CC <- enrich_to_df(ora_shared_upreg_CC_filtered, "Both", "Upregulated", "CC")
+shared_down_CC <- enrich_to_df(ora_shared_downreg_CC_filtered, "Both", "Downregulated", "CC")
+
+# Combine all male results
+shared_go_table <- bind_rows(shared_up_BP, shared_down_BP, shared_up_MF, shared_down_MF, shared_up_CC, shared_down_CC)
+write.csv(shared_go_table, "shared_GO_ora.csv", row.names = T)
+```
+
+### Investigate GPCR Genes
+```{r}
+# G protien-coupled signaling pathway
+genes_in_GO <- ora_female_downreg_BP@result$geneID[ora_female_downreg_BP@result$ID == "GO:0007186"]
+
+genes_in_GO <- unlist(strsplit(genes_in_GO, "/"))  # Separate the genes
+
+g_coupled_entrez <- resOrdered_unique.female_downreg$ENTREZID[resOrdered_unique.female_downreg$gene %in% genes_in_GO]
+g_coupled_log2fc <- resOrdered_unique.female_downreg$log2FoldChange[resOrdered_unique.female_downreg$gene %in% genes_in_GO]
+g_coupled_padj <- resOrdered_unique.female_downreg$padj[resOrdered_unique.female_downreg$gene %in% genes_in_GO]
+
+gpcr_table <- data.frame(
+  Gene = genes_in_GO,
+  Log2FoldChange = g_coupled_log2fc,
+  AdjustedPvalue = g_coupled_padj,
+  ENTREZID = g_coupled_entrez
+)
+write.csv(gpcr_table, "suppFig_gpcr_table.csv", row.names = FALSE)
+```
+
+
+## B. KEGG analysis
+
+### Run enrichKEGG function
+```{r}
+###  KEGG pathway over-representation analysis
+run_enrichKEGG <- function(gene_counts, organism, universe){
+  genes_id <- as.character(gene_counts$ENTREZID)
+  
+  background = as.character(universe$ENTREZID)
+
+  kk <- enrichKEGG(gene = genes_id,
+                   organism = organism,
+                   universe = background,
+                   pvalueCutoff = 0.05,
+                   minGSSize = 3,
+                   maxGSSize = 500
+                   )
+  return(kk)
+}
+
+# Females
+kk_female_up <- run_enrichKEGG(resOrdered_unique.female_upreg, 'uah', res_female_actVsHib_new_df)
+kk_female_down <- run_enrichKEGG(resOrdered_unique.female_downreg, 'uah', res_female_actVsHib_new_df)
+
+# Males 
+kk_male_up <- run_enrichKEGG(resOrdered_unique.male_upreg, 'uah', res_male_actVsHib_new_df)
+kk_male_down <- run_enrichKEGG(resOrdered_unique.male_downreg, 'uah', res_male_actVsHib_new_df)
+
+# Shared
+kk_shared_up <- run_enrichKEGG(resOrdered_shared_upreg, 'uah', res_female_actVsHib_new_df)
+kk_shared_down <- run_enrichKEGG(resOrdered_shared_downreg, 'uah', res_female_actVsHib_new_df)
+
+# Active and hibernation
+kk_hib_up <- run_enrichKEGG(hib_up, 'uah', res_hib_maleVsFemale_new_df)
+kk_hib_down <- run_enrichKEGG(hib_down, 'uah', res_hib_maleVsFemale_new_df)
+kk_act_up <- run_enrichKEGG(act_up, 'uah', res_act_maleVsFemale_new_df)
+kk_act_down <- run_enrichKEGG(act_down, 'uah', res_act_maleVsFemale_new_df)
+
+
+```
+
+### Plot KEGG ORA results
+```{r}
+# Females up and downreg, male upreg, shared upreg had zero enriched pathways
+
+# Males
+kk_male_down <- kk_male_down %>% arrange(desc(Count))
+barplot(kk_male_down, showCategory = 20,title = "KEGG ORA of Male-Specific Downregulated Genes", 
+        label_format = function(x) gsub(" - Ursus arctos \\(brown bear\\)", "", x)) +
+  labs(x = "# of genes associated with KEGG Pathway") +
+  theme_bw(base_size = 14)
+ggsave("kegg_ora_male_downreg_barplot.png", width =12, height = 15, dpi = 600)
+
+# Shared
+kk_shared_down <- kk_shared_down %>% arrange(desc(Count))
+barplot(kk_shared_down, showCategory = 20, title = "KEGG ORA of Downregulated Genes Found in Both Sexes", 
+        label_format = function(x) gsub(" - Ursus arctos \\(brown bear\\)", "", x)) +
+  labs(x = "# of genes associated with KEGG Pathway") +
+  theme_bw(base_size = 14)
+ggsave("kegg_ora_shared_downreg_barplot.png", width =12, height = 15, dpi = 600)
+
+# Hib up and downreg and act upreg had zero enriched pathways
+# Active
+kk_act_down <- kk_act_down %>% arrange(desc(Count))
+barplot(kk_shared_down, showCategory = 20, title = "KEGG ORA of Active season-specific Downregulated Genes", 
+        label_format = function(x) gsub(" - Ursus arctos \\(brown bear\\)", "", x)) +
+  labs(x = "# of genes associated with KEGG Pathway") +
+  theme_bw(base_size = 14)
+ggsave("kegg_ora_act_downreg_barplot.png", width =12, height = 15, dpi = 600)
+```
+
+### Make KEGG ORA table
+```{r}
+# Function to convert KEGG results to a tidy table
+kegg_to_df <- function(kegg_result, sex, regulation) {
+  as.data.frame(kegg_result@result) %>%
+    filter(p.adjust < 0.05) %>%  # Corrected to select significant pathways
+    mutate(Sex = sex, Regulation = regulation, KEGG_ID = ID) %>%
+    dplyr::select(Sex, Regulation, Description, p.adjust, GeneRatio, Count)
+}
+
+# Female KEGG tables
+kk_female_up_df <- kegg_to_df(kk_female_up, "Female", "Upregulated")
+kk_female_down_df <- kegg_to_df(kk_female_down, "Female", "Downregulated")
+
+# Male KEGG tables
+kk_male_up_df <- kegg_to_df(kk_male_up, "Male", "Upregulated")
+kk_male_down_df <- kegg_to_df(kk_male_down, "Male", "Downregulated")
+
+# Shared KEGG tables
+kk_shared_up_df <- kegg_to_df(kk_shared_up, "Shared", "Upregulated")
+kk_shared_down_df <- kegg_to_df(kk_shared_down, "Shared", "Downregulated")
+
+# Combine all KEGG results
+combined_kegg_df <- rbind(
+  kk_female_up_df,
+  kk_female_down_df,
+  kk_male_up_df,
+  kk_male_down_df,
+  kk_shared_up_df,
+  kk_shared_down_df
+)
+
+# Export to CSV
+write.csv(combined_kegg_df, "combined_kegg_table.csv", row.names = T)
+```
+
+

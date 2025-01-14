@@ -1,0 +1,507 @@
+---
+title: "adiposeGenes_DESeq2.11.24.24"
+output: html_document
+date: "2024-11-25"
+---
+
+Set-up
+```{r}
+library(tidyverse)
+library(DESeq2)
+library(IHW)
+library(ggplot2)
+library(dplyr)
+library(patchwork)
+```
+
+
+
+# 1. DESEQ Analysis
+```{r}
+# Read in raw count table -------------------------------------------------
+cts <- read.csv("rawCounts_forSexSpecificExp_11.19.24.csv", row.names = 1)
+
+# Set up colData object for DEseq2 by parsing sample names in count table
+experiment <- factor(str_split_fixed(names(cts), "[.]", 4)[, 4])
+condition <- factor(str_split_fixed(names(cts), "[.]", 4)[, 3])
+
+# subsetting new data from janesen/new cts matrix
+new_experiment_samples <- which(experiment == "new")
+cts_new <- cts[, new_experiment_samples]  # Subset count matrix
+condition_new <- factor(str_split_fixed(names(cts_new), "[.]", 4)[, 3])
+
+# assigning condition to new dataset
+col_data_new <- DataFrame(condition = condition_new)
+
+# Contsruct DESeqDataSet
+dds_new <- DESeqDataSetFromMatrix(countData = cts_new,
+                              colData = col_data_new,
+                              design = ~ condition)
+# Pre-filtering
+smallestGroupSize <- 2 # smallest group size
+keep <- rowSums(counts(dds_new) >= 10) >= smallestGroupSize
+dds_new <- dds_new[keep, ]
+
+# Differential Expression Analysis
+dds_new <- DESeq(dds_new)
+
+# Results, ihw = calculates adjusted p value, taking into consideration mean expression across all samples 
+# Active vs hibernation differential gene expression in males and females
+res_female_actVsHib_new <- results(dds_new, contrast=c("condition","female_hib","female_act"), filterFun = ihw)
+res_male_actVsHib_new <- results(dds_new, contrast=c("condition", "male_hib", "male_act"), filterFun = ihw)
+
+# Male vs Female differential gene expression in active and hibernation seasons
+res_hib_maleVsFemale_new <- results(dds_new, contrast=c("condition","female_hib","male_hib"), filterFun = ihw)
+res_act_maleVsFemale_new <- results(dds_new, contrast=c("condition","female_act","male_act"), filterFun = ihw)
+
+
+# Save as dataframe
+# female: act vs hib
+res_female_actVsHib_new_df <- as.data.frame(res_female_actVsHib_new) %>% rownames_to_column('full_gene_id') %>%
+  mutate(
+    ENTREZID = sapply(strsplit(full_gene_id, ":"), '[', 1),
+    gene_id = sapply(strsplit(full_gene_id, ":"), '[', 2),
+    gene = sapply(strsplit(full_gene_id, ":"), '[', 3)
+  )
+
+# male: act vs hib
+res_male_actVsHib_new_df <- as.data.frame(res_male_actVsHib_new) %>% rownames_to_column('full_gene_id') %>%
+  mutate(
+    ENTREZID = sapply(strsplit(full_gene_id, ":"), '[', 1),
+    gene_id = sapply(strsplit(full_gene_id, ":"), '[', 2),
+    gene = sapply(strsplit(full_gene_id, ":"), '[', 3)
+  )
+
+# hib: male vs female
+res_hib_maleVsFemale_new_df <- as.data.frame(res_hib_maleVsFemale_new) %>% rownames_to_column('full_gene_id') %>%
+  mutate(
+    ENTREZID = sapply(strsplit(full_gene_id, ":"), '[', 1),
+    gene_id = sapply(strsplit(full_gene_id, ":"), '[', 2),
+    gene = sapply(strsplit(full_gene_id, ":"), '[', 3)
+  )
+
+# act: male vs female
+res_act_maleVsFemale_new_df <- as.data.frame(res_act_maleVsFemale_new) %>% rownames_to_column('full_gene_id') %>%
+  mutate(
+    ENTREZID = sapply(strsplit(full_gene_id, ":"), '[', 1),
+    gene_id = sapply(strsplit(full_gene_id, ":"), '[', 2),
+    gene = sapply(strsplit(full_gene_id, ":"), '[', 3)
+  )
+
+# Save DESeq2 Results
+write_tsv(res_female_actVsHib_new_df,"deseq2_female.actVsHib_bearAdipose_genes.tsv")
+write_tsv(res_male_actVsHib_new_df,"deseq2_male.actVsHib_bearAdipose_genes.tsv")
+
+write_tsv(res_hib_maleVsFemale_new_df,"deseq2_hib.maleVsFemale_bearAdipose_genes.tsv")
+write_tsv(res_act_maleVsFemale_new_df,"deseq2_act_maleVsFemale_genes.tsv")
+
+```
+
+# 2. Plot PCA
+```{r}
+# Variance-Stabilizing Transformation
+vsd_new <- varianceStabilizingTransformation(dds_new, blind = TRUE)  # Transform counts for visualization, blind=whether the transformation should be blind (TRUE) to the sample information specified by the design formula.
+# blind = TRUE when want to compare samples unbiased to the experimental design
+
+# PCA Plot
+pca_new <- plotPCA(vsd_new, intgroup = "condition", returnData = TRUE, ntop=1000)  # Extract PCA data
+
+percentVar <- round(100 * attr(pca_new, "percentVar")) # Make variance a percentage
+
+# Extracting additional metadata to determine shape and color
+pca_new$Sex <- ifelse(grepl("female", pca_new$condition), "Female", "Male")  # Male or Female
+pca_new$Season <- ifelse(grepl("act", pca_new$condition), "Active", "Hibernation")
+
+# Shorten sample names to "x_hib" or "x_act"
+pca_new$name <- gsub("^(.*?)(_hib|_act).*", "\\1\\2", pca_new$name)
+
+#pca play with colors and shapes
+ggplot(pca_new, aes(x = PC1, y = PC2, color = Sex, shape = Season)) +
+  geom_point(size = 5) +
+  scale_shape_manual(values = c("Hibernation" = 16, "Active" = 17)) +
+  scale_color_manual(values = c("Female" = "maroon", "Male" = "turquoise4")) +
+  xlab(paste("PC1: ", percentVar[1], "% variance")) +
+  ylab(paste("PC2: ", percentVar[2], "% variance")) +
+  ggtitle("Prinical Component Analysis: Top 1,000 Genes") +
+  theme_light()
+ggsave("Figure1/1000_PCA_adipose_brownbears.pdf", dpi = 600)
+
+```
+
+# 3. Subset significantly differentially expressed genes (DEG)
+```{r}
+## Female: hib vs act
+# Sort by p-value
+resOrdered_female_new <- res_female_actVsHib_new[order(res_female_actVsHib_new$pvalue), ]
+
+# Filter for a p-adjusted < 0.05 = significant genes
+resOrdered_female_sig_new <- as.data.frame(resOrdered_female_new) %>% filter(padj < 0.05) %>% 
+  rownames_to_column('full_gene_id') %>%
+  mutate(
+    ENTREZID = sapply(strsplit(full_gene_id, ":"), '[', 1),
+    gene_id = sapply(strsplit(full_gene_id, ":"), '[', 2),
+    gene = sapply(strsplit(full_gene_id, ":"), '[', 3)
+  )
+
+# Set the row names back
+rownames(resOrdered_female_sig_new) <- resOrdered_female_sig_new$full_gene_id
+
+## Male: hib vs act
+# Sort by p-value
+resOrdered_male_new <- res_male_actVsHib_new[order(res_male_actVsHib_new$pvalue), ]
+
+# Filter for a p-adjusted < 0.05 = significant genes
+resOrdered_male_sig_new <- as.data.frame(resOrdered_male_new) %>% filter(padj < 0.05) %>% 
+  rownames_to_column('full_gene_id') %>%
+  mutate(
+    ENTREZID = sapply(strsplit(full_gene_id, ":"), '[', 1),
+    gene_id = sapply(strsplit(full_gene_id, ":"), '[', 2),
+    gene = sapply(strsplit(full_gene_id, ":"), '[', 3)
+  )
+
+# Set the row names back
+rownames(resOrdered_male_sig_new) <- resOrdered_male_sig_new$full_gene_id
+
+# Save DEGs
+write_tsv(resOrdered_female_sig_new,"deseq_filtered.sig.female_genes.tsv")
+write_tsv(resOrdered_male_sig_new,"deseq_filtered.sig.male_genes.tsv")
+
+## Hibernation: female vs male
+# Sort by p-value
+resOrdered_hib_maleVsFemale <- res_hib_maleVsFemale_new[order(res_hib_maleVsFemale_new$pvalue), ]
+
+# Filter for a p-adjusted < 0.05 = significant genes
+resOrdered_hib_maleVsFemale <- as.data.frame(resOrdered_hib_maleVsFemale) %>% filter(padj < 0.05) %>% 
+  rownames_to_column('full_gene_id') %>%
+  mutate(
+    ENTREZID = sapply(strsplit(full_gene_id, ":"), '[', 1),
+    gene_id = sapply(strsplit(full_gene_id, ":"), '[', 2),
+    gene = sapply(strsplit(full_gene_id, ":"), '[', 3)
+  )
+
+# Set the row names back
+rownames(resOrdered_hib_maleVsFemale) <- resOrdered_hib_maleVsFemale$full_gene_id
+
+## Active: female vs male
+# Sort by p-value
+resOrdered_act_maleVsFemale <- res_act_maleVsFemale_new[order(res_act_maleVsFemale_new$pvalue), ]
+
+# Filter for a p-adjusted < 0.05 = significant genes
+resOrdered_act_maleVsFemale <- as.data.frame(resOrdered_act_maleVsFemale) %>% filter(padj < 0.05) %>% 
+  rownames_to_column('full_gene_id') %>%
+  mutate(
+    ENTREZID = sapply(strsplit(full_gene_id, ":"), '[', 1),
+    gene_id = sapply(strsplit(full_gene_id, ":"), '[', 2),
+    gene = sapply(strsplit(full_gene_id, ":"), '[', 3)
+  )
+
+# Set the row names back
+rownames(resOrdered_act_maleVsFemale) <- resOrdered_act_maleVsFemale$full_gene_id
+
+# Save DEGs
+write_tsv(resOrdered_hib_maleVsFemale,"deseq_resOrdered_hib_maleVsFemale.tsv")
+write_tsv(resOrdered_act_maleVsFemale,"deseq_resOrdered_act_maleVsFemale.tsv")
+
+```
+
+# 4. Plot Venn diagram of DEGs
+```{r}
+library(ggvenn)
+
+# Filter for upregulated genes in females during hibernation
+resOrdered_female_up <- resOrdered_female_sig_new %>% filter(log2FoldChange > 0)
+resOrdered_female_down <- resOrdered_female_sig_new %>% filter(log2FoldChange < 0)
+
+# Filter for upregulated genes in males during hibernation
+resOrdered_male_up <- resOrdered_male_sig_new %>% filter(log2FoldChange > 0)
+resOrdered_male_down <- resOrdered_male_sig_new %>% filter(log2FoldChange < 0)
+
+# Create lists of upregulated and downregulated genes for Female and Male
+upregulated_genes <- list(
+  `Female` = row.names(resOrdered_female_up), 
+  `Male` = row.names(resOrdered_male_up)
+)
+
+downregulated_genes <- list(
+  `Female` = row.names(resOrdered_female_down), 
+  `Male` = row.names(resOrdered_male_down)
+)
+
+# Plot Venn diagram for upregulated genes
+up_venn <- ggvenn(
+  upregulated_genes,
+  show_percentage = FALSE,
+  text_size = 6
+) + ggtitle("Upregulated Genes During Hibernation")
+ggsave("upregulated.png", width = 8, height = 6, dpi = 300)
+
+
+# Plot Venn diagram for downregulated genes
+down_venn <- ggvenn(
+  downregulated_genes,
+  show_percentage = FALSE,
+  text_size = 6
+) + ggtitle("Downregulated Genes During Hibernation")
+ggsave("downregulated.png", width = 8, height = 6, dpi = 300)
+
+```
+
+# 5. Subset unique upregulated and downregulated genes for male and females
+```{r}
+# Get all unique female genes
+all_unique.female_sig <- subset(resOrdered_female_sig_new, !(resOrdered_female_sig_new$full_gene_id %in% resOrdered_male_sig_new$full_gene_id))
+
+# Filter female genes for upreg/downreg
+resOrdered_unique.female_upreg <- all_unique.female_sig %>% filter(log2FoldChange > 0)
+resOrdered_unique.female_downreg <- all_unique.female_sig %>% filter(log2FoldChange < 0)
+
+# Get all unique male genes
+all_unique.male_sig <- subset(resOrdered_male_sig_new, !(resOrdered_male_sig_new$full_gene_id %in% resOrdered_female_sig_new$full_gene_id))
+
+# Filter male genes for upreg/downreg
+resOrdered_unique.male_upreg <- all_unique.male_sig %>% filter(log2FoldChange > 0)
+resOrdered_unique.male_downreg <- all_unique.male_sig %>% filter(log2FoldChange < 0)
+
+# Save sex-specific DEGs
+write_tsv(resOrdered_unique.female_upreg, "female_upreg_unique.tsv")
+write_tsv(resOrdered_unique.male_upreg, "male_upreg_unique.tsv")
+write_tsv(resOrdered_unique.female_downreg, "female_downreg_unique.tsv")
+write_tsv(resOrdered_unique.male_downreg, "male_downreg_unique.tsv")
+
+```
+
+# 6. Subset shared upregulated and downregulated genes, plot the male vs female log2fc values of shared genes
+```{r}
+# Find gene ids that are in female list that are also in male list (other columns have female DE info)
+all_shared.female_sig <- resOrdered_female_sig_new[resOrdered_female_sig_new$full_gene_id %in% resOrdered_male_sig_new$full_gene_id, ]
+resOrdered_shared.female_sig <- all_shared.female_sig[order(all_shared.female_sig$baseMean), ]  # order by baseMean so male and female gene_ids will be in the same order
+
+# Find gene ids that are in male list that are also in female list (other columns have male DE info)
+all_shared.male_sig <- resOrdered_male_sig_new[resOrdered_male_sig_new$full_gene_id %in% resOrdered_female_sig_new$full_gene_id, ]
+resOrdered_shared.male_sig <- all_shared.male_sig[order(all_shared.male_sig$baseMean), ] # order by baseMean so male and female gene_ids will be in the same order
+
+# Make a new data frame with the shared gene names and female log2FoldChange = log2FoldChange, male log2FoldChange = log2FoldChange_male, male padj = padj_male, rest of data is female based
+all_shared_sig <- resOrdered_shared.female_sig %>% mutate(padj_male = resOrdered_shared.male_sig$padj, log2FoldChange_male = resOrdered_shared.male_sig$log2FoldChange) 
+
+# Plot female vs male log2FoldChange
+ggplot(all_shared_sig, aes(x=log2FoldChange, y=log2FoldChange_male)) +
+  geom_point() +
+  labs(title = "Log2 Fold Change of All Signifigantly Shared Genes") +
+  xlab("Female log2 fold change") +
+  ylab("Male log2 fold change") +
+  theme_bw()
+ggsave("suppFig_shared_regulation.pdf", dpi = 600)
+
+# Filter for all shared upregulated genes
+resOrdered_shared_upreg <- all_shared_sig %>% filter(log2FoldChange > 0)
+
+# Filter for all down upregulated genes
+resOrdered_shared_downreg <- all_shared_sig %>% filter(log2FoldChange < 0)
+
+# Save shared DEGs
+write_tsv(resOrdered_shared_upreg, "shared_upregulated.tsv")
+write_tsv(resOrdered_shared_downreg, "shared_downregulated.tsv")
+```
+
+# 7. Make heatmaps of differentuially expressed genes
+```{r}
+library(pheatmap)
+library(RColorBrewer)
+
+# Heatmap function
+make_heatmap <- function(df, vsd, sex){
+  
+  genes <- df$full_gene_id
+  norm_counts = assay(vsd)
+  
+  if (sex == "Female"){
+    samples <- colnames(norm_counts)[grepl("female", colnames(norm_counts))]
+  }else if (sex == "Male"){
+    samples <- colnames(norm_counts)[grepl("\\.male", colnames(norm_counts))]
+  }else{
+    samples <- colnames(norm_counts)
+  }
+
+  # Subset counts of genes in df
+  counts <- norm_counts[genes, samples]
+  
+  # Custom column labels
+  custom_labels <- c("Adak_hib_male", "Adak_act_male", "Dodge_act_male", "Dodge_hib_male", "John_hib_male", "Kio_act_female",
+                     "Kio_hib_female", "Willow_act_female", "Willow_hib_female", "Zuri_act_female")
+
+  
+  # Create sample annotations
+  sample_annotations <- as.data.frame(colData(vsd))  # Metadata from DESeq2 object
+  sample_annotations <- sample_annotations %>%
+    mutate(Season = ifelse(grepl("hib", condition), "Hibernation", "Active"), 
+           Gender = ifelse(grepl("female", condition), "Female", "Male"))
+
+  # formatting sample annotations
+  annotation_col <- sample_annotations[samples, c("Season", "Gender")]
+  
+  #rownames(annotation_col) <- samples  # Ensure rownames match column names of counts
+
+  # Define custom annotation colors
+  annotation_colors <- list(
+    Season = c("Hibernation" = "darkgreen", "Active" = "orange"),
+    Gender = c("Female" = "maroon4", "Male" = "darkturquoise")
+  )
+  
+  pheatmap(mat = counts,
+           annotation_col = annotation_col,
+           annotation_colors = annotation_colors,
+           cluster_rows = TRUE,  # Cluster rows (genes)
+           cluster_cols = TRUE,  # Cluster columns (samples)
+           show_rownames = FALSE,
+           labels_col = custom_labels,
+           scale = "row",  # Scale each row (gene) to have mean=0, sd=1
+           fontsize_col = 10,  # Adjust font size for samples
+           main = paste0("All Differentially Expressed Genes"),
+           width = 8,
+           height = 12,
+           annotation_names_col = FALSE,  # Turn off column annotation legend labels
+           annotation_names_row = FALSE,
+           color = rev(hcl.colors(1050, palette = "RdBu")),
+           legend_breaks = c(-1.5, 1.5),
+           legend_labels = c("Lower","Higer"),
+           filename = "Heatmap_all_DE_genes.pdf"
+           )
+}
+
+combined_for_heatmap <- rbind(resOrdered_female_sig_new,resOrdered_male_sig_new)
+make_heatmap(combined_for_heatmap, vsd_new, "shared")
+
+```
+
+### TPM plots of GPCR genes GPER1 and OXTR
+```{r}
+library(reshape2)
+
+# Load gene lengths from CSV file
+bear_gene_lengths <- read.csv("uarctos_geneLength_12.21.24.csv")
+
+# Calculate TPM (Transcripts Per Million)
+# Divide counts matrix by gene length to normalize for gene size
+x <- cts_new / bear_gene_lengths$Length
+
+# Calculate column sums for normalization
+col_sums <- colSums(x, na.rm = TRUE)
+
+# Normalize to TPM scale
+# Scale each column so that the sum of the column equals 1 million
+# Transforms the raw counts into TPM values
+tpm.mat <- t(t(x) * 1e6 / col_sums)
+
+# Convert the matrix to a data frame for easier manipulation
+tpm.df <- as.data.frame(tpm.mat)
+
+
+
+
+
+# GPER
+# Extract TPM values for GPER1 gene
+gper1_tpm <- tpm.df %>%
+  rownames_to_column("gene_id") %>%
+  filter(str_detect(gene_id, "GPER1"))
+
+# Extract samples for each group based on exact patterns in column names
+female_act_gper1 <- gper1_tpm[, grepl("\\bfemale_act\\b", colnames(gper1_tpm))]
+female_hib_gper1 <- gper1_tpm[, grepl("\\bfemale_hib\\b", colnames(gper1_tpm))]
+
+
+# Add condition column to each data frame
+female_act_gper1 <- female_act_gper1 %>%
+  rownames_to_column("Sample") %>%
+  mutate(Condition = "Active")
+
+female_hib_gper1 <- female_hib_gper1 %>%
+  rownames_to_column("Sample") %>%
+  mutate(Condition = "Hibernation")
+
+
+# Combine all data frames for plotting
+combined_gper1 <- bind_rows(female_act_gper1, female_hib_gper1)
+
+# Reshape the data to a long format for ggplot
+melted_gper1 <- melt(
+  combined_gper1,
+  id.vars = c("Sample", "Condition"),
+  variable.name = "Gene",
+  value.name = "TPM"
+)
+
+# Create a boxplot with individual data points overlaid
+ggplot(melted_gper1, aes(x = Condition, y = TPM, fill = Condition)) +
+  #geom_boxplot(outlier.shape = NA, alpha = 0.6, color = "black") + # Black outline for boxplots
+  geom_point(width = 0.2, size = 5, alpha = 0.8, shape = 21, color = "black") + # Black outline for points
+  labs(
+    title = "GPER1 Gene Expression in Female Bears",
+    x = "Season",
+    y = "Normalized Gene Expression\n(transcripts per million)"
+  ) +
+  scale_fill_manual(values = c("Active" = "orange", "Hibernation" = "darkgreen")) + # Custom colors for fill
+  theme_bw(base_size = 14) +
+  theme(
+    legend.position = "none",
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  )
+ggsave("GPER1_tpm_plot.pdf", width = 6, height = 5, dpi = 600)
+
+
+
+
+
+# OXTR
+# Extract TPM values for OXTR gene
+oxtr_tpm <- tpm.df %>%
+  rownames_to_column("gene_id") %>%
+  filter(str_detect(gene_id, "OXTR"))
+
+# Extract samples for each group based on exact patterns in column names
+female_act_oxtr <- oxtr_tpm[, grepl("\\bfemale_act\\b", colnames(oxtr_tpm))]
+female_hib_oxtr <- oxtr_tpm[, grepl("\\bfemale_hib\\b", colnames(oxtr_tpm))]
+
+
+# Add condition column to each data frame
+female_act_oxtr <- female_act_oxtr %>%
+  rownames_to_column("Sample") %>%
+  mutate(Condition = "Active")
+
+female_hib_oxtr <- female_hib_oxtr %>%
+  rownames_to_column("Sample") %>%
+  mutate(Condition = "Hibernation")
+
+
+# Combine all data frames for plotting
+combined_oxtr <- bind_rows(female_act_oxtr, female_hib_oxtr)
+
+# Reshape the data to a long format for ggplot
+melted_oxtr <- melt(
+  combined_oxtr,
+  id.vars = c("Sample", "Condition"),
+  variable.name = "Gene",
+  value.name = "TPM"
+)
+
+# Create a boxplot with individual data points overlaid
+ggplot(melted_oxtr, aes(x = Condition, y = TPM, fill = Condition)) +
+  #geom_boxplot(outlier.shape = NA, alpha = 0.6, color = "black") + # Black outline for boxplots
+  geom_point(width = 0.2, size = 5, alpha = 0.8, shape = 21, color = "black") + # Black outline for points
+  labs(
+    title = "OXTR Gene Expression in Female Bears",
+    x = "Season",
+    y = "Normalized Gene Expression\n(transcripts per million)"
+  ) +
+  scale_fill_manual(values = c("Active" = "orange", "Hibernation" = "darkgreen")) + # Custom colors for fill
+  theme_bw(base_size = 14) +
+  theme(
+    legend.position = "none",
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  )
+ggsave("OXTR_tpm_plot.pdf", width = 6, height = 5, dpi = 600)
+
+```
+
+
+
