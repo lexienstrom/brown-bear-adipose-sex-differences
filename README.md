@@ -3,6 +3,7 @@ This repository contains code for data analysis used in our study of sex-specifi
 
 ## Data Availability
 - Raw data available at NCBI BioProject: PRJNA413091
+- Brown bear genome assembly: [GCF_023065955.2](https://www.ncbi.nlm.nih.gov/datasets/genome/GCF_023065955.2/)
 
 ## Contents
 1. Bioinformatics Processing and Quantification
