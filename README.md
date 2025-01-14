@@ -12,6 +12,9 @@ This repository contains code for data analysis used in our study of sex-specifi
 ## 1. Bioinformatics Processing and Quantification
 ### Trimming with TrimGalore
 Raw reads were quality trimmed using TrimGalore v0.4.2 with flags -q 24, --clip_R1 12, --clip_R2 12, --length 50, and --stringency 5. 
+```bash
+ code
+```
 
 ### Mapping with STAR
 Trimmed reads were mapped to the brown bear reference genome assembly22 (NCBI GCA_023065955.2) using STAR v2.7.6a 23, retaining only uniquely mapping reads using – outFilterMultimapNmax 1. 
