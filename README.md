@@ -8,7 +8,7 @@ This repository contains code for data analysis used in our study of sex-specifi
 ## Contents
 1. Bioinformatics Processing and Quantification
 2. Differential Gene Expression Analysis
-3. Gene Ontology (GO) and Kyto Encylopedia of Genes and Genomes (KEGG) Pathway Analyses
+3. Gene Ontology (GO) and Kyoto Encylopedia of Genes and Genomes (KEGG) Pathway Analyses
 
 ## 1. Bioinformatics Processing and Quantification
 ### Trimming with TrimGalore
