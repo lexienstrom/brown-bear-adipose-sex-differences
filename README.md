@@ -15,14 +15,14 @@ This repository contains code for data analysis used in our study of sex-specifi
 Note: These analyses were run on the Washington State University HPC (Kamiak). For generalizability, simplified commands are presented here rather than the specific SLURM scripts used to run these commands on Kamiak.
 
 ### Trimming with TrimGalore
-Raw reads were quality trimmed using TrimGalore v0.4.2 with flags -q 24, --clip_R1 12, --clip_R2 12, --length 50, and --stringency 5. 
+Raw reads were quality trimmed using TrimGalore v0.4.2. 
 ```bash
 trim_galore --paired -q 24 --fastqc --fastqc_args "--noextract --nogroup --outdir 1_trim/fastqc" --stringency 5 --illumina --length 50
 -o 1_trim --clip_R1 12 --clip_R2 12 [path/to/read1] [path/to/read2]
 ```
 
 ### Mapping with STAR
-Trimmed reads were mapped to the brown bear reference genome assembly22 (NCBI GCA_023065955.2) using STAR v2.7.6a 23, retaining only uniquely mapping reads using – outFilterMultimapNmax 1.
+Trimmed reads were mapped to the brown bear reference genome assembly22 (NCBI GCA_023065955.2) using STAR v2.7.6a 23, retaining only uniquely mapping reads.
 
 ```bash
 STAR --genomeDir ../2_mapping/reference/GCF_023065955.2 --runThreadN 12 --readFilesIn [path/to/read1] [path/to/read2] --outFileNamePrefix ./2_mapped_test/[identifier prefix]  --outFilterMultimapNmax 1  --readFilesCommand zcat  --twopassMode Basic
