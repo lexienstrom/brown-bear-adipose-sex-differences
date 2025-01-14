@@ -14,7 +14,7 @@ This repository contains code for data analysis used in our study of sex-specifi
 Raw reads were quality trimmed using TrimGalore v0.4.2 with flags -q 24, --clip_R1 12, --clip_R2 12, --length 50, and --stringency 5. 
 
 ### Mapping with STAR
-Trimmed reads were mapped to the brown bear reference genome assembly22 (NCBI GCA_023065955.2) using STAR v2.7.6a 23, retaining only uniquely mapping reads using – outFilterMultimapNmax 1 . 
+Trimmed reads were mapped to the brown bear reference genome assembly22 (NCBI GCA_023065955.2) using STAR v2.7.6a 23, retaining only uniquely mapping reads using – outFilterMultimapNmax 1. 
 
 ### Quantifying gene-level read counts with featureCounts
 Gene-level read counts were then quantified using featureCounts from Subread v1.6.3
@@ -26,7 +26,7 @@ The following R script contains code to
 - Plot PCA 
 - Subset significantly differentially expressed genes
 - Plot Venn diagram of DEGs
-- Subset unique upregulated and downregulated genes for male and females
+- Subset unique upregulated and downregulated genes for males and females
 - Subset shared upregulated and downregulated genes, plot the male vs female log2fc values of shared genes
 - Make heatmaps of DEGs
 - Plot the transcripts per million of two interesting genes (GPER1 and OXTR)
@@ -42,4 +42,4 @@ The following R script contains code used to
   * Plot ORA results as bargraphs
   * Save ORA results as csv files
 
-Link to R Markdown: [go_and_KEGG_analysis.11.30.2024.Rmd](analysis/)
+Link to R Markdown: [go_and_KEGG_analysis.11.30.2024.Rmd](https://github.com/lexienstrom/brown-bear-adipose-sex-differences/blob/main/analysis/go_and_KEGG_analysis.11.30.2024.Rmd)
