@@ -18,3 +18,18 @@ Trimmed reads were mapped to the brown bear reference genome assembly22 (NCBI GC
 
 ## Quantifying gene-level read counts with featureCounts
 Gene-level read counts were then quantified using featureCounts from Subread v1.6.3
+
+## 2. Differential Gene Expression Analysis
+The following R script contains code to
+- Normalize gene expression counts for adipose
+- Perform differential expression analysis between active season females and hibernation females, and active season males and hibernating males
+- Perform differential expression analysis between active  males and active females, and hibernating  males and hibernating females
+
+Link to Rscript: 
+
+## 3. GO and KEGG Pathway Analysis of Differentially Expressed Genes
+The following R script contains code used to
+- Use Gene Set Enrichment Analysis (GSEA)to characterize enriched GO and KEGG terms for all male and female hibernation vs active season genes, and all active and hibernation male vs female genes
+- Use Overrepresentation Analysis (ORA) to characterize enriched GO and KEGG terms for differentially expressed male-specific and female-specific up and downregulated genes
+
+Link to Rscript:
