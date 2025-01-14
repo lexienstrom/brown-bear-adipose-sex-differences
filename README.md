@@ -31,7 +31,7 @@ The following R script contains code to
 - Make heatmaps of DEGs
 - Plot the transcripts per million of two interesting genes (GPER1 and OXTR)
 
-Link to R Markdown: [adiposeGenes_DESeq2.11.24.24.Rmd](analysis/)
+Link to R Markdown: [adiposeGenes_DESeq2.11.24.24.Rmd](https://github.com/lexienstrom/brown-bear-adipose-sex-differences/blob/main/analysis/adipose_DESeq2.11.25.24.Rmd)
 
 ## 3. GO and KEGG Pathway Analysis of Differentially Expressed Genes
 The following R script contains code used to
