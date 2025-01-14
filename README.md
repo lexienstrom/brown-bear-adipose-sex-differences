@@ -22,7 +22,7 @@ trim_galore --paired -q 24 --fastqc --fastqc_args "--noextract --nogroup --outdi
 ```
 
 ### Mapping with STAR
-Trimmed reads were mapped to the brown bear reference genome assembly22 (NCBI GCA_023065955.2) using STAR v2.7.6a 23, retaining only uniquely mapping reads.
+Trimmed reads were mapped to the brown bear reference genome assembly22 [NCBI GCA_023065955.2](https://www.ncbi.nlm.nih.gov/datasets/genome/GCF_023065955.2/) using STAR v2.7.6a 23, retaining only uniquely mapping reads.
 
 ```bash
 STAR --genomeDir ../2_mapping/reference/GCF_023065955.2 --runThreadN 12 --readFilesIn [path/to/read1] [path/to/read2] --outFileNamePrefix ./2_mapped_test/[identifier prefix]  --outFilterMultimapNmax 1  --readFilesCommand zcat  --twopassMode Basic
